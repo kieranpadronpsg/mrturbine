@@ -486,6 +486,7 @@
   .name-key:hover { background: #7a7a7a; }
   .name-key:active { background: #2e2e2e; }
   .name-key.wide { width: 24px; font-size: 8px; }
+  .name-key-arrow { display: block; margin: 0 auto; shape-rendering: crispEdges; }
   .name-key:disabled { background: #a8a8a8; color: #d8d8d8; cursor: not-allowed; }
   #change-character-btn {
     font-family: inherit;
@@ -1154,7 +1155,11 @@ function submitName() {
     const del = document.createElement('button');
     del.type = 'button';
     del.className = 'name-key wide';
-    del.textContent = 'DEL';
+    del.setAttribute('aria-label', 'Delete');
+    del.title = 'Delete';
+    // Left-pointing arrow (drawn as a shape so it looks the same in any font)
+    del.innerHTML = '<svg class="name-key-arrow" viewBox="0 0 10 8" width="11" height="9" aria-hidden="true">' +
+      '<path d="M0 4 L4 0 L4 3 L10 3 L10 5 L4 5 L4 8 Z" fill="currentColor"/></svg>';
     del.addEventListener('click', deleteNameChar);
     row.appendChild(del);
 

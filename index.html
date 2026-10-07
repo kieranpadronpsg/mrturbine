@@ -315,16 +315,20 @@
     z-index: 10;
   }
   #gameover-overlay.open { display: flex; }
+  /* The box is always laid out at the big size (250x250) so nothing inside ever
+     re-flows. The menubg.png layer behind the content is 200x200 and is scaled
+     up 1.25x (= 250x250) for the high score menu. Scaling a layer is smooth;
+     animating width/height made the edges shake. */
   #gameover-box {
-    background-image: url('assets/gui/menubg.png');
-    background-size: 100% 100%;
-    background-repeat: no-repeat;
+    position: relative;
+    isolation: isolate;
+    background: none;
     border: none;
     border-radius: 8px;
     padding: 12px 14px;
     text-align: center;
-    width: 200px;
-    height: 200px;
+    width: 250px;
+    height: 250px;
     line-height: normal;
     overflow: hidden;
     box-sizing: border-box;
@@ -332,7 +336,27 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    transition: width 0.3s ease, height 0.3s ease; /* grows/shrinks between menu sizes */
+  }
+  #gameover-box::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 200px;
+    height: 200px;
+    margin: -100px 0 0 -100px;
+    z-index: -1;
+    background-image: url('assets/gui/menubg.png');
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    border-radius: 8px;
+    transform: scale(1);
+    transform-origin: center;
+    transition: transform 0.3s ease; /* grows/shrinks between menu sizes */
+    will-change: transform;
+  }
+  #gameover-box.naming::before {
+    transform: scale(1.25);
   }
   #gameover-title-img {
     width: 96px;
@@ -396,11 +420,6 @@
     display: none;
     flex-direction: column;
     align-items: center;
-  }
-  /* Roomier popup (menubg.png scaled up 25%: 200 -> 250) while the keyboard is up */
-  #gameover-box.naming {
-    width: 250px;
-    height: 250px;
   }
   #gameover-box.naming #gameover-buttons { display: none; }
   #gameover-box.naming #gameover-name-entry {

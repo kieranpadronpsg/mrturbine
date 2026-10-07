@@ -437,6 +437,10 @@
     flex-direction: column;
     align-items: center;
     gap: 2px;
+    /* keyboard alone drawn another 10% bigger (on top of the 1.25x above),
+       anchored at its top center */
+    transform: scale(1.1);
+    transform-origin: top center;
   }
   .name-key-row { display: flex; gap: 2px; }
   .name-key {

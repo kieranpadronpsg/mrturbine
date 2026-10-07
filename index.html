@@ -456,9 +456,9 @@
     flex-direction: column;
     align-items: center;
     gap: 2px;
-    /* keyboard alone: 0.5709 x 1.2, on top of the 1.25x above, anchored at
-       its top center */
-    transform: scale(0.68508);
+    /* keyboard alone: sized so the keyboard ends up 200px wide on screen
+       (169px layout width x 1.25 above x 0.94675 = 200px), anchored at its top center */
+    transform: scale(0.94675);
     transform-origin: top center;
   }
   .name-key-row { display: flex; gap: 2px; }

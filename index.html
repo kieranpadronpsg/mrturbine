@@ -332,6 +332,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    transition: width 0.3s ease, height 0.3s ease; /* grows/shrinks between menu sizes */
   }
   #gameover-title-img {
     width: 96px;
@@ -402,7 +403,14 @@
     height: 250px;
   }
   #gameover-box.naming #gameover-buttons { display: none; }
-  #gameover-box.naming #gameover-name-entry { display: flex; }
+  #gameover-box.naming #gameover-name-entry {
+    display: flex;
+    animation: name-entry-in 0.3s ease both;
+  }
+  @keyframes name-entry-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
   #name-slots {
     display: flex;
     gap: 4px;
@@ -1048,6 +1056,7 @@ function beginNaming() {
     : Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12);
   gameoverStatusEl.textContent = 'HIGH SCORE!';
   gameoverStatusEl.classList.add('is-high-score');
+  void gameoverBox.offsetWidth; // lock in the starting size so the box animates up to the big size
   gameoverBox.classList.add('naming');
   updateNameUI();
 }

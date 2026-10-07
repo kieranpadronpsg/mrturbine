@@ -1,0 +1,1479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Mr. Turbine's Runaround</title>
+<style>
+  @font-face {
+    font-family: 'BaseFont';
+    src: url('assets/font/basefont.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    overflow: hidden;
+  }
+  body {
+    background: transparent;
+    font-family: 'BaseFont', 'Courier New', monospace;
+    color: #535353;
+  }
+  /* The page is the game (and, later, the leaderboard) inside its decorative
+     frame. gameframe.png is 1272x514:
+       game hole         899x450, top-left corner 33px from the left, 32px from the top
+       leaderboard slot  270x450, top-right corner 33px from the right, 32px from the top
+     Everything is laid out at this size, then the whole thing is shrunk by
+     2/3 so the game ends up at 1x (600x300) with the frame scaled to
+     match. Embed the page at 848x343. To change the overall size, change
+     the scale() below and the two numbers on #page. */
+  #page {
+    position: relative;
+    width: 848px;   /* 1272 * 2/3 */
+    height: 343px;  /* 514 * 2/3, rounded up */
+    overflow: hidden;
+  }
+  #frame {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 1272px;
+    height: 514px;
+    transform: scale(0.666667);
+    transform-origin: top left;
+  }
+  #frame-img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 1272px;
+    height: 514px;
+    z-index: 2;
+    pointer-events: none; /* clicks/taps go through to the game */
+    user-select: none;
+  }
+  /* The game hole: crops the game to exactly 899x450 */
+  #hole {
+    position: absolute;
+    top: 32px;
+    left: 33px;
+    width: 899px;
+    height: 450px;
+    overflow: hidden;
+    z-index: 1;
+  }
+  /* The game box is 900x453 (600x302 at 1.5x). The hole trims 1px off the
+     right side, and the 3px floor line under the canvas falls below the hole. */
+  #wrap {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 900px;
+    height: 453px;
+  }
+  /* Leaderboard slot (the leaderboard area of the frame is opaque, so this sits
+     above the frame image). The frame art already has the title and ten rows of
+     three empty pills (rank | name | score); the text below is placed inside them.
+     Measured from gameframe.png, relative to the slot's top-left corner (969,32):
+       rows start at y=74 and are 38px apart; each pill interior is 19px tall
+       rank pill  x=12  width 26
+       name pill  x=48  width 105
+       score pill x=163 width 96 */
+  #lb-slot {
+    position: absolute;
+    top: 32px;
+    left: 969px; /* 1272 - 33 - 270 */
+    width: 270px;
+    height: 450px;
+    z-index: 3;
+    overflow: hidden;
+    color: #2e2e2e;
+    font-size: 16px;
+    user-select: none;
+  }
+  #lb-list {
+    list-style: none;
+  }
+  #lb-list li {
+    position: absolute;
+    left: 0;
+    width: 270px;
+    height: 19px;
+    line-height: 19px;
+    white-space: nowrap;
+  }
+  #lb-list span {
+    position: absolute;
+    top: 0;
+    height: 19px;
+    overflow: hidden;
+  }
+  #lb-list .lb-rank  { left: 12px;  width: 26px;  text-align: center; letter-spacing: -3px; text-indent: -3px; font-size: 15px; }
+  #lb-list .lb-name  { left: 48px;  width: 105px; padding-left: 8px;  letter-spacing: 2px; }
+  #lb-list .lb-score { left: 163px; width: 96px;  padding-right: 8px; text-align: right; letter-spacing: 1px; font-size: 15px; }
+  canvas {
+    background: #f7f7f7;
+    border-bottom: 2px solid #535353;
+    display: block;
+  }
+  #hiscore,
+  #score {
+    position: absolute;
+    top: 8px;
+    font-size: 14px;
+    line-height: normal;
+    letter-spacing: 1px;
+    color: #ffffff;
+    text-shadow:
+      -1px -1px 0 rgba(0,0,0,0.6),
+       1px -1px 0 rgba(0,0,0,0.6),
+      -1px  1px 0 rgba(0,0,0,0.6),
+       1px  1px 0 rgba(0,0,0,0.6);
+    z-index: 5;
+    pointer-events: none;
+  }
+  #hiscore {
+    left: 8px;
+  }
+  #score {
+    right: 8px;
+  }
+  #start-msg {
+    margin-top: auto;
+    margin-bottom: 85px;
+    font-size: 12px;
+    color: #ffffff;
+    transition: opacity 300ms ease-in;
+    animation: title-bob 2.2s ease-in-out infinite;
+    text-shadow:
+      -1px -1px 0 rgba(0,0,0,0.6),
+       1px -1px 0 rgba(0,0,0,0.6),
+      -1px  1px 0 rgba(0,0,0,0.6),
+       1px  1px 0 rgba(0,0,0,0.6);
+  }
+  #start-msg.start-fade-out {
+    opacity: 0;
+  }
+
+  #picker {
+    display: flex;
+    justify-content: center;
+    gap: 14px;
+    margin-bottom: 16px;
+  }
+  .char-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    background: #fff;
+    border: 2px solid #d3d3d3;
+    border-radius: 8px;
+    padding: 6px 8px;
+    cursor: pointer;
+    font-family: 'BaseFont', 'Courier New', monospace;
+    color: #535353;
+    transition: border-color 0.15s ease, background 0.15s ease;
+    flex-shrink: 0;
+  }
+  .char-btn:hover:not(.disabled) {
+    border-color: #535353;
+  }
+  .char-btn.selected {
+    border-color: #535353;
+    background: #eee;
+  }
+  .char-btn .icon-box {
+    width: 40px;
+    height: 40px;
+    image-rendering: pixelated;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f0f0f0;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .char-btn .icon-box img {
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+  }
+  .char-btn .icon-placeholder {
+    width: 100%;
+    height: 100%;
+    background: #d3d3d3;
+  }
+  .char-btn .char-label {
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+  .char-btn.disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+    filter: grayscale(100%);
+  }
+  .char-btn.disabled .char-label {
+    color: #a5a5a5;
+    font-size: 11px;
+  }
+  #char-display {
+    width: 100px;
+    height: 75px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    margin: 0 auto 8px auto;
+    transition: transform 0.15s ease, opacity 0.15s ease;
+  }
+  #char-display-img {
+    width: 100px;
+    height: 75px;
+    image-rendering: pixelated;
+    display: block;
+  }
+  #char-display-placeholder {
+    width: 100px;
+    height: 75px;
+    background: #d3d3d3;
+    border-radius: 6px;
+  }
+  #char-display.disabled {
+    opacity: 0.55;
+    filter: grayscale(100%);
+  }
+  #char-carousel {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .char-arrow {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .char-arrow img {
+    width: 20px;
+    height: 20px;
+    image-rendering: pixelated;
+    display: block;
+  }
+  .char-arrow:hover {
+    opacity: 0.7;
+  }
+
+  /* Retry popup — confined to the canvas frame, not the whole page */
+  #canvas-wrap {
+    position: relative;
+    display: inline-block;
+    line-height: 0; /* avoid extra gap below the canvas */
+    transform: scale(1.5);
+    transform-origin: top left;
+  }
+  #start-overlay {
+    display: flex;
+    flex-direction: column;
+    position: absolute;
+    inset: 0;
+    background: transparent;
+    align-items: center;
+    justify-content: flex-start;
+    padding-top: 20px;
+    z-index: 8;
+    pointer-events: none;
+  }
+  #start-overlay.hidden { display: none; }
+  #start-title-img {
+    width: 300px;
+    height: 80px;
+    margin-top: 30px;
+    image-rendering: pixelated;
+    animation: title-bob 2.2s ease-in-out infinite;
+    transition: opacity 300ms ease-in;
+  }
+  #start-title-img.start-fade-out {
+    opacity: 0;
+  }
+  @keyframes title-bob {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+  }
+  #gameover-overlay {
+    display: none;
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+  }
+  #gameover-overlay.open { display: flex; }
+  #gameover-box {
+    background-image: url('assets/gui/menubg.png');
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 14px;
+    text-align: center;
+    width: 200px;
+    height: 200px;
+    line-height: normal;
+    overflow: hidden;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  #gameover-title-img {
+    width: 96px;
+    height: 48px;
+    image-rendering: pixelated;
+    margin-bottom: 10px;
+  }
+  #gameover-status {
+    visibility: visible;
+    font-size: 9px;
+    font-weight: bold;
+    letter-spacing: 1.5px;
+    margin-bottom: 2px;
+    color: #000000;
+  }
+  #gameover-status.is-high-score {
+    font-size: 11px;
+    color: #ff0000;
+    animation: rainbow-cycle 2s linear infinite;
+  }
+  @keyframes rainbow-cycle {
+    0% { filter: hue-rotate(0deg); }
+    100% { filter: hue-rotate(360deg); }
+  }
+  #gameover-score {
+    margin-bottom: 7px;
+    color: #000000;
+  }
+  #gameover-score-label {
+    font-size: 12px;
+    letter-spacing: 1px;
+  }
+  #gameover-score-value {
+    font-size: 12px;
+    letter-spacing: 1px;
+  }
+  #gameover-default-view,
+  #gameover-character-view {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  #gameover-character-view {
+    display: none;
+  }
+  #gameover-box.expanded #gameover-default-view {
+    display: none;
+  }
+  #gameover-box.expanded #gameover-character-view {
+    display: flex;
+  }
+  /* Buttons (Change Character / Retry) and the name-entry keyboard share the
+     bottom half of the popup; the keyboard replaces the buttons until a name
+     is saved. */
+  #gameover-buttons {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  #gameover-name-entry {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+  }
+  #gameover-box.naming #gameover-buttons { display: none; }
+  #gameover-box.naming #gameover-name-entry { display: flex; }
+  #name-slots {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 5px;
+  }
+  .name-slot {
+    width: 18px;
+    height: 18px;
+    line-height: 16px;
+    box-sizing: border-box;
+    border: 1px solid #535353;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.55);
+    color: #000000;
+    font-size: 12px;
+    text-align: center;
+  }
+  .name-slot.cur { border-color: #000000; background: #ffffff; }
+  #name-keyboard {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+  .name-key-row { display: flex; gap: 2px; }
+  .name-key {
+    font-family: inherit;
+    font-size: 9px;
+    width: 15px;
+    height: 17px;
+    padding: 0;
+    border: none;
+    border-radius: 3px;
+    background: #535353;
+    color: #f7f7f7;
+    cursor: pointer;
+  }
+  .name-key:hover { background: #7a7a7a; }
+  .name-key:active { background: #2e2e2e; }
+  .name-key.wide { width: 24px; font-size: 8px; }
+  .name-key:disabled { background: #a8a8a8; color: #d8d8d8; cursor: not-allowed; }
+  #change-character-btn {
+    font-family: inherit;
+    font-size: 10px;
+    letter-spacing: 1px;
+    background: #535353;
+    color: #f7f7f7;
+    border: none;
+    border-radius: 5px;
+    padding: 3px 14px;
+    cursor: pointer;
+  }
+  #retry-btn {
+    font-family: inherit;
+    font-size: 9px;
+    letter-spacing: 1px;
+    background-image: url('assets/gui/buttons/retry.png');
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    background-color: transparent;
+    color: #000000;
+    border: none;
+    width: 85px;
+    height: 20px;
+    cursor: pointer;
+  }
+  #select-character-btn {
+    font-family: inherit;
+    font-size: 9px;
+    letter-spacing: 1px;
+    background-image: url('assets/gui/buttons/selectbutton.png');
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    background-color: transparent;
+    color: #000000;
+    border: none;
+    width: 85px;
+    height: 20px;
+    margin-bottom: 6px;
+    cursor: pointer;
+  }
+  #select-character-btn:hover {
+    background-image: url('assets/gui/buttons/selectbutton_hover.png');
+    color: #ffffff;
+  }
+  #back-to-gameover-btn {
+    font-family: inherit;
+    font-size: 9px;
+    letter-spacing: 1px;
+    background-image: url('assets/gui/buttons/backbutton.png');
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    background-color: transparent;
+    color: #000000;
+    border: none;
+    width: 85px;
+    height: 20px;
+    cursor: pointer;
+  }
+  #back-to-gameover-btn:hover {
+    background-image: url('assets/gui/buttons/backbutton_hover.png');
+    color: #ffffff;
+  }
+  #retry-btn:hover {
+    background-image: url('assets/gui/buttons/retry_hover.png');
+    color: #ffffff;
+  }
+  #change-character-btn {
+    background-image: url('assets/gui/buttons/changecharacter.png');
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    background-color: transparent;
+    color: #000000;
+    border: none;
+    font-size: 9px;
+    width: 127px;
+    height: 35px;
+    margin-bottom: 6px;
+  }
+  #change-character-btn:hover {
+    background-image: url('assets/gui/buttons/changecharacter_hover.png');
+    color: #ffffff;
+  }
+</style>
+</head>
+<body>
+<div id="page">
+<div id="frame">
+<img id="frame-img" src="assets/gui/gameframe.png" alt="" draggable="false">
+<div id="hole">
+<div id="wrap">
+  <div id="canvas-wrap">
+    <span id="hiscore" style="visibility:hidden;">HI 00000</span>
+    <span id="score" style="visibility:hidden;">00000</span>
+    <canvas id="game" width="600" height="300"></canvas>
+    <div id="start-overlay">
+      <img id="start-title-img" src="assets/gui/title.png" alt="">
+      <div id="start-msg">TAP TO START</div>
+    </div>
+    <div id="gameover-overlay">
+      <div id="gameover-box">
+        <div id="gameover-default-view">
+          <img id="gameover-title-img" src="assets/gui/logo.png" alt="">
+          <div id="gameover-status">GAME OVER</div>
+          <div id="gameover-score">
+            <span id="gameover-score-label">Score:</span>
+            <span id="gameover-score-value">00000</span>
+          </div>
+          <div id="gameover-buttons">
+            <button id="change-character-btn">CHANGE CHARACTER</button>
+            <button id="retry-btn">RETRY</button>
+          </div>
+          <div id="gameover-name-entry">
+            <div id="name-slots">
+              <span class="name-slot"></span>
+              <span class="name-slot"></span>
+              <span class="name-slot"></span>
+              <span class="name-slot"></span>
+            </div>
+            <div id="name-keyboard"></div>
+          </div>
+        </div>
+        <div id="gameover-character-view">
+          <div id="char-carousel">
+            <button id="char-prev" class="char-arrow" aria-label="Previous character">
+              <img id="char-prev-img" src="assets/gui/arrows/left.png" alt="">
+            </button>
+            <div id="char-display" class="selected">
+              <img id="char-display-img" src="" alt="" style="display:none;">
+              <div id="char-display-placeholder" style="display:none;"></div>
+            </div>
+            <button id="char-next" class="char-arrow" aria-label="Next character">
+              <img id="char-next-img" src="assets/gui/arrows/right.png" alt="">
+            </button>
+          </div>
+          <button id="select-character-btn">SELECT</button>
+          <button id="back-to-gameover-btn">BACK</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+<div id="lb-slot">
+  <ol id="lb-list"></ol>
+</div>
+</div>
+</div>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+const GROUND_Y = 260; // tune this to match where your floor art's surface line actually sits
+
+let scoreEl = document.getElementById('score');
+let hiEl = document.getElementById('hiscore');
+let msgEl = document.getElementById('start-msg');
+const startOverlay = document.getElementById('start-overlay');
+const startTitleImg = document.getElementById('start-title-img');
+const TITLE_SLIDE_DURATION = 300; // ms — fade duration (extended 200ms)
+const gameoverOverlay = document.getElementById('gameover-overlay');
+const gameoverBox = document.getElementById('gameover-box');
+const gameoverScoreEl = document.getElementById('gameover-score-value');
+const gameoverStatusEl = document.getElementById('gameover-status');
+const retryBtn = document.getElementById('retry-btn');
+const changeCharacterBtn = document.getElementById('change-character-btn');
+
+// Leaderboard name entry (shown in the popup when a score makes the top 10)
+const MAX_NAME_LENGTH = 4;
+const nameSlotEls = Array.from(document.querySelectorAll('#name-slots .name-slot'));
+const nameKeyboardEl = document.getElementById('name-keyboard');
+const nameEntryEl = document.getElementById('gameover-name-entry');
+let nameOkBtn = null;
+let nameText = '';
+let namingActive = false;
+let namingSubmitting = false;
+let pendingQualifies = null; // null = still checking, true/false = known
+let qualifyCheckId = 0;
+const backToGameoverBtn = document.getElementById('back-to-gameover-btn');
+
+let hiscore = parseInt(localStorage_safeGet());
+function localStorage_safeGet(){ return 0; } // no localStorage in artifacts; keep in-memory only
+let sessionHi = 0;
+
+let state = 'ready'; // ready, running, over
+let speed = 6;
+let baseSpeed = 6;
+let lastSpeedMilestone = 0;
+let gravity = 0.6;
+let score = 0;
+let frame = 0;
+let groundOffset = 0;
+let firstObstacleCleared = false;
+
+// Floor art: 3600x300 tiling image in assets/world, scrolls behind everything
+const FLOOR_TILE_WIDTH = 3600;
+const floorImg = new Image();
+let floorImgLoaded = false;
+floorImg.onload = () => { floorImgLoaded = true; };
+floorImg.onerror = () => { floorImgLoaded = false; };
+floorImg.src = 'assets/world/floor1.png';
+let floorScrollX = 0;
+
+// Horizon art: 3600x300 tiling image in assets/world, sits between the
+// character layer and the farthest-back bg layer, with a mid parallax scroll
+const HORIZON_TILE_WIDTH = 3600;
+const HORIZON_PARALLAX_FACTOR = 0.5; // moves at half the floor's speed
+const horizonImg = new Image();
+let horizonImgLoaded = false;
+horizonImg.onload = () => { horizonImgLoaded = true; };
+horizonImg.onerror = () => { horizonImgLoaded = false; };
+horizonImg.src = 'assets/world/horizon1.png';
+let horizonScrollX = 0;
+
+// Background art: 3600x300 tiling image in assets/world, the farthest-back
+// layer of all. Its position is driven by elapsed frames (not the displayed
+// score) so the initial pre-scoring delay counts toward the loop too —
+// it completes one full loop in the same time it would take score to reach
+// BG_LOOP_SCORE points if scoring had been running the whole time.
+const SCORE_PER_FRAME = 0.5;
+const BG_TILE_WIDTH = 3600;
+const BG_LOOP_SCORE = 1000; // one full background loop per 1000 "points" of elapsed time
+const BG_LOOP_FRAMES = BG_LOOP_SCORE / SCORE_PER_FRAME;
+const bgImg = new Image();
+let bgImgLoaded = false;
+bgImg.onload = () => { bgImgLoaded = true; };
+bgImg.onerror = () => { bgImgLoaded = false; };
+bgImg.src = 'assets/world/bg1.png';
+let bgScrollX = 0;
+
+// Character running animation: 4 frames (45x45 each) in an "assets" folder
+// next to this HTML file, named character1.png ... character4.png
+const FRAME_COUNT = 4;
+const TICKS_PER_FRAME = 10; // each frame is held for 10 game frames
+const dinoFrames = [];
+const dinoFrameLoaded = [];
+for (let i = 0; i < FRAME_COUNT; i++) {
+  const img = new Image();
+  const idx = i;
+  dinoFrameLoaded[idx] = false;
+  img.onload = () => { dinoFrameLoaded[idx] = true; };
+  img.onerror = () => { dinoFrameLoaded[idx] = false; };
+  img.src = `assets/characters/MrTurbine/character${idx + 1}.png`;
+  dinoFrames.push(img);
+}
+let animTick = 0;
+let animFrameIndex = 0;
+
+// Dedicated jump sprite
+const jumpImg = new Image();
+let jumpImgLoaded = false;
+jumpImg.onload = () => { jumpImgLoaded = true; };
+jumpImg.onerror = () => { jumpImgLoaded = false; };
+jumpImg.src = 'assets/characters/MrTurbine/characterjump.png';
+
+// Dedicated dead sprite, shown with a pop-up-then-down bounce right after dying
+const deadImg = new Image();
+let deadImgLoaded = false;
+deadImg.onload = () => { deadImgLoaded = true; };
+deadImg.onerror = () => { deadImgLoaded = false; };
+deadImg.src = 'assets/characters/MrTurbine/characterdead.png';
+const DEATH_ANIM_DURATION = 72; // ~1.2 seconds at 60fps (20% slower)
+const DEATH_BOUNCE_HEIGHT = 18; // pixels the sprite pops up at the peak
+const DEATH_UP_FRACTION = 0.25; // first 25% of the duration is the pop up; rest is the fall
+let dyingFrame = 0;
+let pendingGameOverScore = 0;
+let deathStartY = 0;
+
+// Dino
+const DINO_SIZE = 45;
+const DINO_REST_X = 50; // normal running position
+const RUN_START_X = -90; // where he starts, off-camera, the moment the run begins
+const OFF_SCREEN_X = RUN_START_X; // same spot on the title screen, so there's no jump when the run starts
+const RUN_CATCHUP_SPEED = 2; // px/frame he closes the gap to his resting position
+const dino = {
+  x: OFF_SCREEN_X,
+  y: GROUND_Y - DINO_SIZE,
+  w: DINO_SIZE,
+  h: DINO_SIZE,
+  vy: 0,
+  jumping: false,
+  legFrame: 0
+};
+
+const JUMP_VELOCITY = -11;
+
+// Obstacles
+const OBSTACLE_START_DELAY = 120; // 2 seconds at 60fps before the first one appears
+const BASE_MIN_OBSTACLE_GAP = 90;  // 1.5 seconds at 60fps, at base speed
+const BASE_MAX_OBSTACLE_GAP = 180; // 3 seconds at 60fps, at base speed
+const OBSTACLE_GAP_FLOOR_MIN = 45; // never closer than 0.75s apart, however fast
+const OBSTACLE_GAP_FLOOR_MAX = 90; // upper bound never drops below 1.5s
+const OBSTACLE_TYPES = ['valve', 'crates', 'rotor', 'sign'];
+// Each type's own draw/collision size, matching its actual source image
+const OBSTACLE_SIZES = {
+  valve: { w: 63.7875, h: 45.5625 }, // 70x50 native, scaled up 25%, down 10%, down 10%, down 10%
+  crates: { w: 54, h: 49.5 },  // native resolution, scaled down 10%
+  rotor: { w: 63, h: 36 },     // native resolution, scaled down 10%
+  sign: { w: 54, h: 45 }       // native resolution, scaled down 10%
+};
+const obstacleImages = {};
+const obstacleImagesLoaded = {};
+OBSTACLE_TYPES.forEach((name) => {
+  const img = new Image();
+  obstacleImagesLoaded[name] = false;
+  img.onload = () => { obstacleImagesLoaded[name] = true; };
+  img.onerror = () => { obstacleImagesLoaded[name] = false; };
+  img.src = `assets/obstacles/${name}.png`;
+  obstacleImages[name] = img;
+});
+let obstacles = [];
+let obstacleTimer = 0;
+let nextObstacleGap = 120;
+
+function resetGame() {
+  state = 'running';
+  speed = baseSpeed;
+  score = 0;
+  frame = 0;
+  lastSpeedMilestone = 0;
+  firstObstacleCleared = false;
+  obstacles = [];
+  obstacleTimer = 0;
+  nextObstacleGap = 120;
+  lastObstacleType = null;
+  firstObstacleSpawned = false;
+  dyingFrame = 0;
+  dino.x = RUN_START_X;
+  dino.y = GROUND_Y - DINO_SIZE;
+  dino.vy = 0;
+  animTick = 0;
+  animFrameIndex = 0;
+  dino.jumping = false;
+  groundOffset = 0;
+  floorScrollX = 0;
+  horizonScrollX = 0;
+  bgScrollX = 0;
+  gameoverOverlay.classList.remove('open');
+  gameoverBox.classList.remove('expanded');
+  endNaming();
+  qualifyCheckId++;
+}
+
+// Fully resets the game back to its very first, pre-play state: title screen
+// showing again, HUD hidden, character off-camera — as if freshly loaded.
+function returnToTitleScreen() {
+  state = 'ready';
+  speed = baseSpeed;
+  score = 0;
+  frame = 0;
+  lastSpeedMilestone = 0;
+  firstObstacleCleared = false;
+  obstacles = [];
+  obstacleTimer = 0;
+  nextObstacleGap = 120;
+  lastObstacleType = null;
+  firstObstacleSpawned = false;
+  dyingFrame = 0;
+  dino.x = OFF_SCREEN_X;
+  dino.y = GROUND_Y - DINO_SIZE;
+  dino.vy = 0;
+  animTick = 0;
+  animFrameIndex = 0;
+  dino.jumping = false;
+  groundOffset = 0;
+  floorScrollX = 0;
+  horizonScrollX = 0;
+  bgScrollX = 0;
+  gameoverOverlay.classList.remove('open');
+  gameoverBox.classList.remove('expanded');
+  endNaming();
+  qualifyCheckId++;
+
+  // Bring the title screen back
+  startTitleImg.classList.remove('start-fade-out');
+  msgEl.classList.remove('start-fade-out');
+  startOverlay.classList.remove('hidden');
+  hiEl.style.visibility = 'hidden';
+  scoreEl.style.visibility = 'hidden';
+}
+
+// The very first start: resets everything as normal, then runs the dino in
+// from off-screen instead of dropping him straight into position.
+function jump() {
+  if (state === 'dying') return;
+  if (state === 'ready') {
+    startTitleImg.classList.add('start-fade-out');
+    msgEl.classList.add('start-fade-out');
+    resetGame();
+    setTimeout(() => {
+      startOverlay.classList.add('hidden');
+      hiEl.style.visibility = 'visible';
+      scoreEl.style.visibility = 'visible';
+    }, TITLE_SLIDE_DURATION);
+    return;
+  }
+  if (state === 'over') {
+    if (namingActive) return; // finish entering the name first
+    resetGame();
+    return;
+  }
+  if (!dino.jumping) {
+    dino.jumping = true;
+    dino.vy = JUMP_VELOCITY;
+  }
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space') {
+    e.preventDefault();
+    jump();
+  }
+});
+canvas.addEventListener('mousedown', jump);
+canvas.addEventListener('touchstart', (e) => { e.preventDefault(); jump(); });
+retryBtn.addEventListener('click', resetGame);
+changeCharacterBtn.addEventListener('click', () => {
+  charIndex = selectedCharIndex;
+  renderCharDisplay();
+  gameoverBox.classList.add('expanded');
+});
+backToGameoverBtn.addEventListener('click', () => {
+  gameoverBox.classList.remove('expanded');
+});
+
+let lastObstacleType = null;
+let firstObstacleSpawned = false;
+
+function spawnObstacle() {
+  let type;
+  if (!firstObstacleSpawned) {
+    // Always lead with the sign, then never use it again for the rest of the run
+    type = 'sign';
+    firstObstacleSpawned = true;
+  } else {
+    const choices = OBSTACLE_TYPES.filter((t) => t !== lastObstacleType && t !== 'sign');
+    type = choices[Math.floor(Math.random() * choices.length)];
+  }
+  lastObstacleType = type;
+  const size = OBSTACLE_SIZES[type];
+  obstacles.push({
+    type: type,
+    x: W + 10,
+    y: GROUND_Y - size.h,
+    w: size.w,
+    h: size.h
+  });
+}
+
+function rectsOverlap(a, b) {
+  const pad = 6;
+  return (
+    a.x + pad < b.x + b.w - pad &&
+    a.x + a.w - pad > b.x + pad &&
+    a.y + pad < b.y + b.h - pad &&
+    a.y + a.h - pad > b.y + pad
+  );
+}
+
+function update() {
+  if (state === 'dying') {
+    dyingFrame++;
+    if (dyingFrame >= DEATH_ANIM_DURATION) {
+      showGameOverPopup();
+    }
+    return;
+  }
+  if (state !== 'running') return;
+
+  frame++;
+  if (firstObstacleCleared) {
+    score += SCORE_PER_FRAME;
+  }
+  const speedMilestone = Math.floor(score / 50);
+  if (speedMilestone > lastSpeedMilestone) {
+    lastSpeedMilestone = speedMilestone;
+    speed = baseSpeed + speedMilestone * 0.4; // ramp rate reduced 20% (was 0.5)
+  }
+
+  groundOffset -= speed;
+  if (groundOffset <= -20) groundOffset = 0;
+
+  floorScrollX -= speed;
+  if (floorScrollX <= -FLOOR_TILE_WIDTH) floorScrollX += FLOOR_TILE_WIDTH;
+
+  horizonScrollX -= speed * HORIZON_PARALLAX_FACTOR;
+  if (horizonScrollX <= -HORIZON_TILE_WIDTH) horizonScrollX += HORIZON_TILE_WIDTH;
+
+  bgScrollX = -((frame % BG_LOOP_FRAMES) / BG_LOOP_FRAMES) * BG_TILE_WIDTH;
+
+  // dino physics
+  if (dino.x < DINO_REST_X) {
+    dino.x = Math.min(DINO_REST_X, dino.x + RUN_CATCHUP_SPEED);
+  }
+  if (dino.jumping) {
+    dino.y += dino.vy;
+    dino.vy += gravity;
+    if (dino.y >= GROUND_Y - DINO_SIZE) {
+      dino.y = GROUND_Y - DINO_SIZE;
+      dino.jumping = false;
+      dino.vy = 0;
+    }
+  }
+  dino.legFrame += Math.abs(speed) * 0.2;
+
+  if (!dino.jumping) {
+    animTick++;
+    if (animTick >= TICKS_PER_FRAME) {
+      animTick = 0;
+      animFrameIndex = (animFrameIndex + 1) % FRAME_COUNT;
+    }
+  }
+
+  // obstacles — gap between spawns shrinks as the game speeds up, since
+  // obstacles also move faster; this keeps the spacing feeling consistent
+  // relative to speed rather than getting sparser as the game progresses.
+  if (frame > OBSTACLE_START_DELAY) {
+    obstacleTimer++;
+    if (obstacleTimer > nextObstacleGap) {
+      spawnObstacle();
+      obstacleTimer = 0;
+      const speedRatio = baseSpeed / speed; // shrinks below 1 as speed climbs
+      const minGap = Math.max(OBSTACLE_GAP_FLOOR_MIN, BASE_MIN_OBSTACLE_GAP * speedRatio);
+      const maxGap = Math.max(OBSTACLE_GAP_FLOOR_MAX, BASE_MAX_OBSTACLE_GAP * speedRatio);
+      nextObstacleGap = minGap + Math.random() * (maxGap - minGap);
+    }
+  }
+
+  const dinoBox = {
+    x: dino.x,
+    y: dino.y,
+    w: dino.w,
+    h: dino.h
+  };
+
+  const obstacleSpeed = speed * 0.75; // obstacles move 25% slower than base speed
+  for (let i = obstacles.length - 1; i >= 0; i--) {
+    const o = obstacles[i];
+    o.x -= obstacleSpeed;
+    if (!firstObstacleCleared && o.x + o.w < dino.x) {
+      firstObstacleCleared = true;
+    }
+    if (o.x + o.w < 0) {
+      obstacles.splice(i, 1);
+      continue;
+    }
+    if (rectsOverlap(dinoBox, o)) {
+      gameOver();
+    }
+  }
+}
+
+function gameOver() {
+  state = 'dying';
+  dyingFrame = 0;
+  deathStartY = dino.y;
+  const finalScore = Math.floor(score);
+  sessionHi = Math.max(sessionHi, finalScore);
+  pendingGameOverScore = finalScore;
+
+  // Ask the server whether this score makes the top 10. The death animation
+  // lasts over a second, so the answer is normally in before the popup opens.
+  pendingQualifies = null;
+  const checkId = ++qualifyCheckId;
+  if (finalScore > 0 && window.Leaderboard) {
+    window.Leaderboard.check(finalScore).then((q) => {
+      if (checkId !== qualifyCheckId) return; // a newer run has started
+      pendingQualifies = q;
+      if (state === 'over' && q) beginNaming();
+    });
+  } else {
+    pendingQualifies = false;
+  }
+}
+
+function showGameOverPopup() {
+  state = 'over';
+  gameoverScoreEl.textContent = String(pendingGameOverScore).padStart(5, '0');
+  gameoverStatusEl.textContent = 'GAME OVER';
+  gameoverStatusEl.classList.remove('is-high-score');
+  gameoverOverlay.classList.add('open');
+  if (pendingQualifies === true) beginNaming();
+}
+
+// ---- Name entry ----
+function updateNameUI() {
+  nameSlotEls.forEach((slot, i) => {
+    slot.textContent = nameText[i] || '';
+    slot.classList.toggle('cur', namingActive && i === nameText.length);
+  });
+  if (nameOkBtn) nameOkBtn.disabled = nameText.length === 0 || namingSubmitting;
+}
+
+function beginNaming() {
+  if (namingActive) return;
+  namingActive = true;
+  namingSubmitting = false;
+  nameText = '';
+  gameoverStatusEl.textContent = 'HIGH SCORE!';
+  gameoverStatusEl.classList.add('is-high-score');
+  gameoverBox.classList.add('naming');
+  updateNameUI();
+}
+
+function endNaming() {
+  namingActive = false;
+  namingSubmitting = false;
+  nameText = '';
+  gameoverBox.classList.remove('naming');
+  updateNameUI();
+}
+
+function addNameChar(ch) {
+  if (!namingActive || namingSubmitting || nameText.length >= MAX_NAME_LENGTH) return;
+  nameText += ch;
+  updateNameUI();
+}
+
+function deleteNameChar() {
+  if (!namingActive || namingSubmitting) return;
+  nameText = nameText.slice(0, -1);
+  updateNameUI();
+}
+
+function submitName() {
+  if (!namingActive || namingSubmitting || nameText.length === 0) return;
+  namingSubmitting = true;
+  updateNameUI();
+  window.Leaderboard.submit(nameText, pendingGameOverScore)
+    .then((data) => {
+      if (!data.added) {
+        // Someone else took the spot while the name was being typed
+        gameoverStatusEl.textContent = 'GAME OVER';
+        gameoverStatusEl.classList.remove('is-high-score');
+      }
+    })
+    .catch(() => {
+      gameoverStatusEl.textContent = 'NOT SAVED';
+      gameoverStatusEl.classList.remove('is-high-score');
+    })
+    .finally(() => {
+      // Saved (or not): on to Retry / Change Character
+      endNaming();
+    });
+}
+
+// On-screen QWERTY keyboard
+['QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM'].forEach((letters, rowIndex) => {
+  const row = document.createElement('div');
+  row.className = 'name-key-row';
+  letters.split('').forEach((ch) => {
+    const key = document.createElement('button');
+    key.type = 'button';
+    key.className = 'name-key';
+    key.textContent = ch;
+    key.addEventListener('click', () => addNameChar(ch));
+    row.appendChild(key);
+  });
+  if (rowIndex === 2) {
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'name-key wide';
+    del.textContent = 'DEL';
+    del.addEventListener('click', deleteNameChar);
+    row.appendChild(del);
+
+    nameOkBtn = document.createElement('button');
+    nameOkBtn.type = 'button';
+    nameOkBtn.className = 'name-key wide';
+    nameOkBtn.textContent = 'OK';
+    nameOkBtn.disabled = true;
+    nameOkBtn.addEventListener('click', submitName);
+    row.appendChild(nameOkBtn);
+  }
+  nameKeyboardEl.appendChild(row);
+});
+
+// Keys must not take focus, otherwise Space would "press" the focused key
+nameEntryEl.addEventListener('mousedown', (e) => e.preventDefault());
+
+// Physical keyboard works too: letters, Backspace, Enter
+document.addEventListener('keydown', (e) => {
+  if (!namingActive || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (/^[a-zA-Z]$/.test(e.key)) {
+    addNameChar(e.key.toUpperCase());
+    e.preventDefault();
+  } else if (e.key === 'Backspace') {
+    deleteNameChar();
+    e.preventDefault();
+  } else if (e.key === 'Enter') {
+    submitName();
+    e.preventDefault();
+  }
+});
+
+function drawBackground() {
+  if (bgImgLoaded) {
+    ctx.imageSmoothingEnabled = false;
+    for (let x = bgScrollX; x < W; x += BG_TILE_WIDTH) {
+      ctx.drawImage(bgImg, x, 0, BG_TILE_WIDTH, H);
+    }
+  }
+  // If bg1.png hasn't loaded yet (or is missing), we simply leave the
+  // canvas's clear color showing — no fallback shapes needed for a backdrop.
+}
+
+function drawHorizon() {
+  if (horizonImgLoaded) {
+    ctx.imageSmoothingEnabled = false;
+    for (let x = horizonScrollX; x < W; x += HORIZON_TILE_WIDTH) {
+      ctx.drawImage(horizonImg, x, 0, HORIZON_TILE_WIDTH, H);
+    }
+  }
+  // If horizon1.png hasn't loaded yet (or is missing), the bg layer (or
+  // clear color) shows through — no fallback shapes needed here.
+}
+
+function drawFloor() {
+  if (floorImgLoaded) {
+    ctx.imageSmoothingEnabled = false;
+    // Draw enough tiles to always cover the canvas width as it scrolls
+    for (let x = floorScrollX; x < W; x += FLOOR_TILE_WIDTH) {
+      ctx.drawImage(floorImg, x, 0, FLOOR_TILE_WIDTH, H);
+    }
+  } else {
+    // Fallback while the image loads (or if it's missing) so the game
+    // still looks reasonable: a simple ground line with dashes.
+    ctx.strokeStyle = '#535353';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, GROUND_Y);
+    ctx.lineTo(W, GROUND_Y);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+    for (let x = groundOffset; x < W; x += 20) {
+      ctx.beginPath();
+      ctx.moveTo(x, GROUND_Y + 4);
+      ctx.lineTo(x + 10, GROUND_Y + 4);
+      ctx.stroke();
+    }
+  }
+}
+
+function drawDino() {
+  ctx.imageSmoothingEnabled = false; // keep pixel art crisp
+
+  if (state === 'over') {
+    // Character already fell off-screen during the dying animation — stay
+    // hidden while the retry popup is up instead of popping back into view.
+    return;
+  }
+
+  if (state === 'dying') {
+    // Quick pop up, then an accelerating fall down past the floor line and
+    // off the bottom of the canvas — the floor layer (drawn on top, later
+    // in draw()) naturally covers him as he passes under it, so he appears
+    // to fall through the floor and disappear. Starts from wherever he
+    // actually died (mid-air if he was jumping, ground level otherwise).
+    const t = Math.min(dyingFrame / DEATH_ANIM_DURATION, 1);
+    let y;
+    if (t < DEATH_UP_FRACTION) {
+      const upT = t / DEATH_UP_FRACTION;
+      const eased = 1 - Math.pow(1 - upT, 2); // ease-out rise
+      y = deathStartY - DEATH_BOUNCE_HEIGHT * eased;
+    } else {
+      const fallT = (t - DEATH_UP_FRACTION) / (1 - DEATH_UP_FRACTION);
+      const eased = fallT * fallT; // ease-in fall, like gravity
+      const startY = deathStartY - DEATH_BOUNCE_HEIGHT;
+      const endY = H + DINO_SIZE; // fully below the canvas, out of view
+      y = startY + (endY - startY) * eased;
+    }
+    const x = dino.x;
+    if (deadImgLoaded) {
+      ctx.drawImage(deadImg, x, y, DINO_SIZE, DINO_SIZE);
+    } else {
+      ctx.fillStyle = '#535353';
+      ctx.fillRect(x, y, DINO_SIZE, DINO_SIZE);
+    }
+    return;
+  }
+
+  if (dino.jumping) {
+    const x = dino.x, y = dino.y;
+    if (jumpImgLoaded) {
+      ctx.drawImage(jumpImg, x, y, DINO_SIZE, DINO_SIZE);
+    } else {
+      ctx.fillStyle = '#535353';
+      ctx.fillRect(x, y, DINO_SIZE, DINO_SIZE);
+    }
+  } else {
+    const x = dino.x, y = dino.y;
+    const currentImg = dinoFrames[animFrameIndex];
+    const currentLoaded = dinoFrameLoaded[animFrameIndex];
+    if (currentLoaded) {
+      ctx.drawImage(currentImg, x, y, DINO_SIZE, DINO_SIZE);
+    } else {
+      // placeholder box until the sprite loads (or if it's missing)
+      ctx.fillStyle = '#535353';
+      ctx.fillRect(x, y, DINO_SIZE, DINO_SIZE);
+    }
+  }
+}
+
+function drawObstacles() {
+  ctx.imageSmoothingEnabled = false;
+  for (const o of obstacles) {
+    if (obstacleImagesLoaded[o.type]) {
+      ctx.drawImage(obstacleImages[o.type], o.x, o.y, o.w, o.h);
+    } else {
+      ctx.fillStyle = '#535353';
+      ctx.fillRect(o.x, o.y, o.w, o.h);
+    }
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  // Layer order, back to front:
+  // 1. bg art (farthest back, slowest parallax scroll)
+  drawBackground();
+  // 2. horizon art (mid-back, faster parallax than bg)
+  drawHorizon();
+  // 3. middle layer: obstacles and character
+  drawObstacles();
+  drawDino();
+  // 4. top layer: floor art, drawn last so it overlaps everything below it
+  drawFloor();
+
+  if (state === 'ready') {
+    ctx.fillStyle = '#535353';
+    ctx.font = '14px monospace';
+  }
+}
+
+function loop() {
+  update();
+  draw();
+  scoreEl.textContent = String(Math.floor(score)).padStart(5, '0');
+  hiEl.textContent = 'HI ' + String(sessionHi).padStart(5, '0');
+  requestAnimationFrame(loop);
+}
+
+// initial static draw
+draw();
+loop();
+
+// Character carousel: one character shown at a time, cycled with the
+// left/right arrow buttons. Only Mr. Turbine is currently playable;
+// Rotor and Blade preview as "Coming Soon" and can't be selected.
+const CHARACTERS = [
+  {
+    id: 'turbine',
+    name: 'Mr. Turbine',
+    disabled: false,
+    selectImg: 'assets/gui/characterselect/mrturbine_select.png',
+    selectHoverImg: 'assets/gui/characterselect/mrturbine_select_hover.png'
+  },
+  { id: 'rotor', name: 'Coming Soon', disabled: true, selectImg: 'assets/gui/characterselect/comingsoon.png', selectHoverImg: null },
+  { id: 'blade', name: 'Coming Soon', disabled: true, selectImg: 'assets/gui/characterselect/comingsoon.png', selectHoverImg: null }
+];
+let charIndex = 0;
+let selectedCharIndex = 0;
+
+const charDisplay = document.getElementById('char-display');
+const charDisplayImg = document.getElementById('char-display-img');
+const charDisplayPlaceholder = document.getElementById('char-display-placeholder');
+const charPrevBtn = document.getElementById('char-prev');
+const charNextBtn = document.getElementById('char-next');
+const charPrevImg = document.getElementById('char-prev-img');
+const charNextImg = document.getElementById('char-next-img');
+
+charPrevBtn.addEventListener('mouseenter', () => { charPrevImg.src = 'assets/gui/arrows/left_hover.png'; });
+charPrevBtn.addEventListener('mouseleave', () => { charPrevImg.src = 'assets/gui/arrows/left.png'; });
+charNextBtn.addEventListener('mouseenter', () => { charNextImg.src = 'assets/gui/arrows/right_hover.png'; });
+charNextBtn.addEventListener('mouseleave', () => { charNextImg.src = 'assets/gui/arrows/right.png'; });
+
+charDisplayImg.addEventListener('error', () => {
+  console.warn('Could not load character select image:', charDisplayImg.src);
+  charDisplayImg.style.display = 'none';
+  charDisplayPlaceholder.style.display = 'block';
+});
+
+function renderCharDisplay() {
+  const c = CHARACTERS[charIndex];
+  if (c.selectImg) {
+    charDisplayImg.src = c.selectImg;
+    charDisplayImg.style.display = 'block';
+    charDisplayPlaceholder.style.display = 'none';
+  } else {
+    charDisplayImg.style.display = 'none';
+    charDisplayPlaceholder.style.display = 'block';
+  }
+  charDisplay.classList.toggle('disabled', c.disabled);
+  charDisplay.classList.toggle('selected', charIndex === selectedCharIndex);
+
+  // No looping: hide whichever arrow would go past an end of the list
+  charPrevBtn.style.visibility = charIndex === 0 ? 'hidden' : 'visible';
+  charNextBtn.style.visibility = charIndex === CHARACTERS.length - 1 ? 'hidden' : 'visible';
+}
+
+
+charPrevBtn.addEventListener('click', () => swipeToCharacter(-1));
+charNextBtn.addEventListener('click', () => swipeToCharacter(1));
+
+const selectCharacterBtn = document.getElementById('select-character-btn');
+selectCharacterBtn.addEventListener('click', () => {
+  if (!CHARACTERS[charIndex].disabled) {
+    selectedCharIndex = charIndex;
+    renderCharDisplay();
+    returnToTitleScreen();
+  }
+});
+
+const SWIPE_DISTANCE = 24; // px the card slides during the swipe
+const SWIPE_DURATION = 150; // ms, matches the CSS transition duration
+let swiping = false;
+
+function swipeToCharacter(direction) {
+  if (swiping) return; // ignore rapid clicks mid-animation
+  const nextIndex = charIndex + direction;
+  if (nextIndex < 0 || nextIndex > CHARACTERS.length - 1) return; // no looping past the ends
+  swiping = true;
+
+  // Slide the current card out toward the direction it was pushed, fading out
+  charDisplay.style.transition = `transform ${SWIPE_DURATION}ms ease, opacity ${SWIPE_DURATION}ms ease`;
+  charDisplay.style.transform = `translateX(${direction * -SWIPE_DISTANCE}px)`;
+  charDisplay.style.opacity = '0';
+
+  setTimeout(() => {
+    charIndex = nextIndex;
+    renderCharDisplay();
+
+    // Jump the new card to the opposite side with no transition, then
+    // animate it sliding in to its resting position
+    charDisplay.style.transition = 'none';
+    charDisplay.style.transform = `translateX(${direction * SWIPE_DISTANCE}px)`;
+    charDisplay.style.opacity = '0';
+    void charDisplay.offsetWidth; // force reflow so the jump isn't animated
+    charDisplay.style.transition = `transform ${SWIPE_DURATION}ms ease, opacity ${SWIPE_DURATION}ms ease`;
+    charDisplay.style.transform = 'translateX(0)';
+    charDisplay.style.opacity = '1';
+
+    setTimeout(() => { swiping = false; }, SWIPE_DURATION);
+  }, SWIPE_DURATION);
+}
+
+renderCharDisplay();
+
+</script>
+
+<script>
+// Leaderboard: shows the shared top 10 from the server (/api/leaderboard).
+(function () {
+  const MAX_ENTRIES = 10;
+  const MAX_NAME_LENGTH = 4; // names are capped at 4 characters
+  const API_URL = '/api/leaderboard';
+  const REFRESH_MS = 30000;
+
+  const listEl = document.getElementById('lb-list');
+
+  // Row positions inside the slot (matches the pills drawn in gameframe.png)
+  const ROW_TOP = 74;
+  const ROW_PITCH = 38;
+
+  function render(entries) {
+    listEl.innerHTML = '';
+    for (let i = 0; i < MAX_ENTRIES; i++) {
+      const entry = entries[i];
+      const li = document.createElement('li');
+      li.style.top = (ROW_TOP + i * ROW_PITCH) + 'px';
+
+      const rank = document.createElement('span');
+      rank.className = 'lb-rank';
+      rank.textContent = String(i + 1);
+
+      const name = document.createElement('span');
+      name.className = 'lb-name';
+      name.textContent = entry ? String(entry.name).slice(0, MAX_NAME_LENGTH) : '';
+
+      const score = document.createElement('span');
+      score.className = 'lb-score';
+      score.textContent = entry ? String(entry.score).padStart(5, '0') : '';
+
+      li.append(rank, name, score);
+      listEl.appendChild(li);
+    }
+  }
+
+  async function refresh() {
+    try {
+      const res = await fetch(API_URL, { cache: 'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      render(Array.isArray(data.entries) ? data.entries : []);
+    } catch (err) {
+      // Server not reachable (e.g. file opened locally): keep what is showing
+    }
+  }
+
+  // Sends a score to the server. Name entry will call this later.
+  async function submit(name, score) {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: name, score: score })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not save the score');
+    render(data.entries);
+    return data;
+  }
+
+  // Asks the server for the current top 10 and says whether this score would
+  // make it. If the server can't be reached, answers false (it couldn't be saved).
+  async function check(score) {
+    if (!(score > 0)) return false;
+    try {
+      const res = await fetch(API_URL, { cache: 'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      const entries = Array.isArray(data.entries) ? data.entries : [];
+      render(entries);
+      return entries.length < MAX_ENTRIES || score > entries[entries.length - 1].score;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  window.Leaderboard = { refresh: refresh, submit: submit, check: check };
+
+  render([]);
+  refresh();
+  setInterval(function () { if (!document.hidden) refresh(); }, REFRESH_MS);
+})();
+</script>
+
+</body>
+</html>

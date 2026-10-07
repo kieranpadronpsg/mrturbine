@@ -366,6 +366,11 @@
   }
   #gameover-status {
     visibility: visible;
+    /* fixed line height so GAME OVER and HIGH SCORE! take the same space and
+       the logo above never moves between menus */
+    height: 10px;
+    line-height: 10px;
+    white-space: nowrap;
     font-size: 9px;
     font-weight: bold;
     letter-spacing: 1.5px;
@@ -420,6 +425,10 @@
     display: none;
     flex-direction: column;
     align-items: center;
+    /* same layout height as the Change Character + Retry buttons (61px), so
+       the logo and text above stay put when this menu replaces them. The
+       keyboard simply extends below this box. */
+    height: 61px;
   }
   #gameover-box.naming #gameover-buttons { display: none; }
   #gameover-box.naming #gameover-name-entry {
@@ -456,9 +465,9 @@
     flex-direction: column;
     align-items: center;
     gap: 2px;
-    /* keyboard alone: sized so the keyboard ends up 200px wide on screen
-       (169px layout width x 1.25 above x 0.94675 = 200px), anchored at its top center */
-    transform: scale(0.94675);
+    /* keyboard alone: sized so the keyboard ends up 180px wide on screen
+       (169px layout width x 1.25 above x 0.85207 = 180px), anchored at its top center */
+    transform: scale(0.85207);
     transform-origin: top center;
   }
   .name-key-row { display: flex; gap: 2px; }

@@ -617,6 +617,7 @@ let namingActive = false;
 let namingSubmitting = false;
 let pendingQualifies = null; // null = still checking, true/false = known
 let qualifyCheckId = 0;
+let submissionId = ''; // unique per name entry, so one entry can only be saved once
 const backToGameoverBtn = document.getElementById('back-to-gameover-btn');
 
 let hiscore = parseInt(localStorage_safeGet());
@@ -1037,6 +1038,9 @@ function beginNaming() {
   namingActive = true;
   namingSubmitting = false;
   nameText = '';
+  submissionId = (window.crypto && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12);
   gameoverStatusEl.textContent = 'HIGH SCORE!';
   gameoverStatusEl.classList.add('is-high-score');
   gameoverBox.classList.add('naming');
@@ -1067,7 +1071,7 @@ function submitName() {
   if (!namingActive || namingSubmitting || nameText.length === 0) return;
   namingSubmitting = true;
   updateNameUI();
-  window.Leaderboard.submit(nameText, pendingGameOverScore)
+  window.Leaderboard.submit(nameText, pendingGameOverScore, submissionId)
     .then((data) => {
       if (!data.added) {
         // Someone else took the spot while the name was being typed
@@ -1439,11 +1443,11 @@ renderCharDisplay();
   }
 
   // Sends a score to the server. Name entry will call this later.
-  async function submit(name, score) {
+  async function submit(name, score, id) {
     const res = await fetch(API_URL, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name: name, score: score })
+      body: JSON.stringify({ name: name, score: score, id: id })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Could not save the score');

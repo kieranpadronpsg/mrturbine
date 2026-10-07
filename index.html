@@ -456,10 +456,9 @@
     flex-direction: column;
     align-items: center;
     gap: 2px;
-    /* keyboard alone drawn a touch bigger (on top of the 1.25x above), sized to
-       stay inside the popup's own padding (17.5px at the sides), anchored at
-       its top center */
-    transform: scale(1.015);
+    /* keyboard alone: 25% smaller than before (1.015 x 0.75), on top of the
+       1.25x above, anchored at its top center */
+    transform: scale(0.76125);
     transform-origin: top center;
   }
   .name-key-row { display: flex; gap: 2px; }

@@ -406,6 +406,9 @@
   #gameover-box.naming #gameover-name-entry {
     display: flex;
     animation: name-entry-in 0.3s ease both;
+    /* name boxes + keyboard drawn 25% bigger, anchored at the top center */
+    transform: scale(1.25);
+    transform-origin: top center;
   }
   @keyframes name-entry-in {
     from { opacity: 0; }
